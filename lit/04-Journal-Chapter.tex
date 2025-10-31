@@ -1,0 +1,144 @@
+
+
+\chapter{Using the real information content\label{chapFour}}
+
+\subsection{Introduction}
+
+ Climate variables are often stored as single- or double-precision floats which are able to represent data at extremely high precision, many trailing digits of which are essentially noise and not scientifically meaningful. This noise in the least significant bit positions makes applying compression much less effective because patterns in random data cannot be exploited to reduce storage volume. One simple lossy compression approach involves truncating the least significant digits of floating-point values as a preprocessing step before the application of lossless compression to improve the compression ratio. For example, in weather forecasting, a study showed that single-precision data provides competitive accuracy to double-precision data, lending credence to the idea that many of the less significant bits of data can be discarded without eliminating important information in data \cite{SinglePrecisioninWeatherForecastingModelsAnEvaluationwiththeIFS}. It has also been shown that a majority of climate variables in an ocean model can use a reduced precision without affecting the accuracy of the model simulation \cite{gmd-12-3135-2019}. The difficulty is in knowing which bits to preserve and which can be discarded.
+
+
+
+\subsection{Background\label{RICBackground}}
+
+ Lossy compressors typically provide ways to specify the criteria that controls how much the dataset is compressed. Commonly used criteria include required peak signal-to-noise ratio (PSNR), absolute or relative error tolerance bounds, a fixed compression rate, or number of significant digits. How to specify the compressor criteria that is appropriate for the data is nontrivial for many scientific applications. Ideally, one would want to keep the ``important" information in the data and get rid of the trailing digits that are comprised of noise.
+ 
+ 
+ 
+ Recent work in \cite{klower} attempts to pinpoint the bit position at which data ceases to provide useful information by using a measure called the bitwise real information content (RIC). The idea is to split the floating-point value into bits with ``real" information and those with numerical noise or ``false" information. The RIC can then be used as a metric to determine the acceptable level of compression and provide an automated way to determine the number of bits needed to preserve spatial structure for one of the hundreds of possible climate variables tracked by climate models. For example, the idea that some bits merely contain noise is used in \cite{PhysRevE.106.015308} to justify reducing the numerical precision to improve performance of the lattice Boltzman Method. Further, many have cited \cite{klower} as rationale for using reduced-precision values to eliminate false precision and improve performance \cite{9912702}, save on storage space \cite{Huang2023}, and lessen demands on network bandwidth \cite{10279204}. 
+ 
+ When the RIC was proposed in \cite{klower}, it was used as a metric to determine acceptable levels of compression for meteorological data. The RIC has now started to gain traction in the climate community as a way to specify the criteria that controls the amount of compression to apply. The RIC can also be used as input to a model-based approach for specifying the compression parameters, as is done in Chapter \ref{chapThree}.  Similarly, in \cite{cappello19}, the bitwise RIC is identified as a predictor that can be used to predict the compressibility of a dataset.
+
+ In \cite{drbsd_real}, we look more closely at the RIC and how the measure can be used as a criterion used to choose lossy compression criteria for climate simulation output. By computing the RIC at each bit position for a set of atmospheric variables from the CESM-LENS dataset, we demonstrated that this measure can be used in a straightforward way to find appropriate bit-positions for data truncated using the BitGrooming compression algorithms \cite{zender2016}, which explicitly ask for the number of significant bits or digits to preserve . On the other hand, figuring out how to convert the information cutoff bit into other common criteria like PSNR or absolute error tolerance is not as straightforward. In the original paper \cite{klower}, Klower et al. look at ZFP\cite{lindstrom2014} in the context of RIC. They find the ZFP parameters whose median absolute errors are at least as small as those obtained by the RIC cutoff bit. In \cite{drbsd_real}, we also compare the compression parameters needed for ZFP and BitGrooming to preserve the specified number of bits to the cutoff to those recommended by the DSSIM \cite{dssim_paper} and find them to be comparable. 
+
+
+ We also find that the RIC can be used to identify artifacts introduced into the less-significant bits of the data \cite{drbsd_real}. Ideally, we want to make sure that compression algorithms are not introducing structure into the data that did not originally exist, and plotting the RIC over each bit position in \cite{drbsd_real} revealed surprising behavior. We found that the BitGrooming and ZFP lossy compression algorithms introduce spikes in the RIC in the least significant bits of the data after quantization, as shown in figure \ref{FLNS}. This behavior was unexpected, and by looking into this behavior more closely, we hope to inform the development of lossy compression algorithms. We hypothesize that these spikes are introduced during quantization of the data values after truncation. One method to eliminate these spikes in spatial structure is simply to truncate the data after 99\% of the RIC in the original data is retained, as is done in \cite{klower}. 
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{figs/FLNS.png}
+    \caption[The Real Information Content of FLNS.]{The Real Information Content of FLNS. (Figure 1 from \cite{drbsd_real}). Each series indicates the information content contained in the bits for a given bit position in the dataset values. The real information typically declines towards zero at some point between the start of the mantissa bits and the last bit position of the floating-point value. Compression tends to preserve most real information up to a point; in the least-significant bits that are preserved a compression artifact is introduced, after which the remaining real information drops to zero due to truncation. The start of the mantissa bits is indicated by the dashed vertical line, where previous bits are reserved for the sign and exponent of the data. The cutoff to preserve 99\% of the real information is indicated by the solid red vertical line and indicated with a number next to the line.}
+    \label{FLNS}
+\end{figure}
+ 
+
+\subsection{Real Information Content}
+
+Here we provide an overview of the RIC, summarizing our interpretation in \cite{drbsd_real}. The bitwise real information content is defined as the mutual information of adjacent points in the same bit position. As is performed in \cite{klower}, we begin by flattening the data in row-order, and the real information content calculation is applied to the resulting N-length bitstream, where adjacent values are considered to be the point immediately before each value in the 1-dimensional bit vector. The RIC can be extended to additional spatial or temporal dimensions, but this definition is used for simplicity of computation. 
+
+
+\subsubsection{Mutual Information of Adjacent Points}
+
+As mentioned in \cite{klower}, the unconditional entropy for a bitstream whose individual bits can take the values ${0, 1}$ is 
+
+\begin{equation}
+H = -p_{0}^m\log_2(p_0^m) - p_{1}^m\log_2(p_1^m), 
+\label{H_uncond}
+\end{equation}
+
+where $p_0^m$ represents the probability of the kth bit $B_k^m$ in an $N$-length bitstream $B^m = (B_1^m, B_2^m,...,B_k^m, ..., B_N^m)$ being 0, and $p_1^m$ represents the probability of $B_k^m$ being 1.
+
+Using one bitstream to represent the current bit value in bit position m in the bitstream, $B_{cur}^m$ and one to represent the value in the adjacent bit position $B_{adj}^m$, we let $p_{ij}^m$ be the probability that both $B_{cur_k}^m = i$ and $B_{adj_k}^m = j$. We also let $p_{adj_j}^m$ and $p_{cur_i}^m$ be the unconditional probabilities that $B_{adj_k}^m = j$ and $B_{cur_k}^m = i$ for some $k$ representing the index of the datapoint in the bitstream. Then we have the mutual information (and RIC) of the two bitstreams as:
+
+\begin{equation} \label{e:mi}
+M(B_{cur}^m, B_{adj}^m) = \sum_{i=0}^1\sum_{j=0}^1 p_{ij}^mlog_2 (\frac{p_{ij}^m}{p_{adj_j}^mp_{cur_i}^m}).
+\end{equation}
+
+Rewriting Equation \ref{e:mi} using the possible values for i and j as being in ${0, 1}$ we obtain 
+
+\begin{equation} \label{e:mi3}
+M(B_{cur}^m, B_{adj}^m) = p_{00}^mlog_2(\frac{p_{00}^m}{p_{cur_0}p_{adj_0}}) +
+p_{01}^mlog_2(\frac{p_{01}^m}{p_{cur_0}p_{adj_1}}) +
+p_{10}^mlog_2(\frac{p_{10}^m}{p_{cur_1}p_{adj_0}}) +
+p_{11}^mlog_2(\frac{p_{11}^m}{p_{cur_1}p_{adj_1}}), 
+\end{equation}
+
+Performing this calculation for all N bits and taking the mean gives the mutual information for bit position $m$. The calculation is performed differently in \cite{klower}. Using conditional probabilities and conditional entropies  the authors show that this is equivalent to the definition provided above. While the definition above it correct, it is perhaps more intuitive to understand in terms of the conditional entropies. This is shown below.
+
+\subsubsection{Mutual Information using Conditional Probabilities}
+
+First, we define the conditional probability that the current bit in the bitstream is $i$ given that the adjecent bit is $j$ as
+
+\begin{equation} \label{e:p}
+p_{i|j}^m = p_{ij}^m/p_{adj_j}^m,
+\end{equation}
+
+Defining the conditional entropies that are conditioned on the state of the adjacent bit as 
+
+\begin{equation} \label{e:h}
+H_0 = -p_{0|0}^m\log_2p_{0|0}^m - p_{0|1}^m\log_2p_{0|1}^m,
+\end{equation}
+\begin{equation}
+H_1 = -p_{1|0}^m\log_2p_{1|0}^m - p_{1|1}^m\log_2p_{1|1}^m,
+\label{bpe2}
+\end{equation}
+
+We can then substitute \ref{e:h} and \ref{e:p} into \ref{e:mi3} giving us an alternate definition for the mutual information content:
+
+\begin{equation}
+M =  H - p_{adj_0}H_0 - p_{adj_1}H_1,
+\label{ric}
+\end{equation}
+
+
+\subsection{Future Research}
+
+
+ While the results from \cite{drbsd_real} summarized above in Section \ref{RICBackground} provide a foundation, several avenues for further investigation remain. These questions include:
+
+
+\begin{itemize}
+
+    \item How can the cutoff bit recommended by the RIC be translated into a parameter setting such as relative error for a given compression algorithm?
+
+    \item What kinds of artifacts are produced by different compressors?
+
+    \item What are the shortcomings of the RIC, when do they apply, and how can the RIC be improved?
+
+\end{itemize}
+
+
+
+    We would like to further consider the question of how we can translate the cutoff bit recommended by the RIC to a parameter setting for a given compression algorithm. We want to more thoroughly explore the connection between the RIC and other quantities of interest such as the DSSIM as described in Chapter \ref{chapTwo}. Previous work in \cite{klower} performs a brute-force approach to matching the RIC bit cutoff with the median error obtained by the ZFP compression algorithm. This is related to the approach shown in \ref{FLNS}, where multiple compression algorithms and settings are applied, and the parameters that lead to median errors near the location of the bit cutoff line are a ``match" for that RIC cutoff. We will explore the parameter settings that align with the RIC and the corresponding levels of compression that can be obtained.
+
+    
+    Another topic we want to investigate is to understand what kind of artifacts are produced by different compressors. So far we have looked at the artifacts introduced by ZFP and BitGrooming, but we will also compress data using SPERR \cite{sperr} and SZ \cite{sheng2016}, two other often-used transform-based lossy compressors for climate data. We would answer the question of what is causing these artifacts, do they behave in similar ways across compressors and error modes including the precision and absolute error mode in ZFP (of which we only example the precision mode so far), and can adjustments to the compressors be made to remove these spatial artifacts? 
+
+ % "false information" may not be recording spatial structure, but can still be valid and informative data. 
+    
+    Finally, there are some situations in which the RIC is imperfect. The same numerical values stored in different ways, such as with exponent values that differ from neighboring points, causes alterations in the computed RIC. This will affect data that spans a large range of exponent values in a small spatial area, such as PRECT (precipitation rate) data. Adjustments to the process of computing RIC can be made to account for these shortcomings. Additionally, the RIC as defined in \cite{klower} operates 1-dimensionally, where the dataset is flattened and neighboring bits are considered to be only the bits adjacent in the resulting bit stream. The measure could be extended into two dimensions to more accurately capture the notion of spatial structure.
+
+ 
+ % One possible next step would include methods to remove these compression artifacts through improving the compression algorithm. We may also extend the analysis to include both temporal and spatial structure in the data, providing some insight into how artifacts may be related in a time-dependent context.
+
+
+% \alex{Motivation for this approach, all compressors have some way of deciding what the tolerance is (error, etc). In CESM, can't expect a scientists to sit down and say what's acceptable for hundreds of variables. Same motivation as modeling work. Real information content is an automated way to decide what is acceptable. That was the original take, we want to see how useful it is in practice. It's use went beyond saying how many bits are not noise, but useful to identify if artifacts are being introduced into the data. Now we think it's use could go beyond that.}
+
+% \alex{
+% Two different areas we want to look at more:
+
+% First: Applicability; What situations does it make sense to use RIC in?
+% it assumes spatial correlation
+% different exponents will alter the real information content, like PRECT, in a way we may not 
+
+% how do we translate cutoff bit of 13 to a zfp parameter setting?
+
+% second, what kinds of artifacts do different compressors leave (are spir/sz similar because both are transform methods?) What causes them (the rounding error)/can we get rid of them?
+% }
+
+
+
+
+
+
+
+

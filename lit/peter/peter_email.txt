@@ -1,0 +1,68 @@
+Allison (CC Aly),
+
+Thanks for confirming and no worries about the writing.  I'll get back to you and Alex if I have any further questions.
+
+It is surprising that "real information" is found in the least significant bits, which you'd assume are not encoded by zfp.  It is also interesting to see these spikes moving to less and less significant bits as zfp precision increases (e.g., Fig 1 in your paper).
+
+I decided to run some experiments myself with the Miranda density and viscosity fields from SDRBench.  Attached are the results for different rounding modes and implementations of the decorrelating transform.  The same "false information" you observed is there for zfp's round never and round first modes.  The other rounding modes have rather interesting behavior that I cannot easily explain.
+
+Some other points worth making:
+
+    I don't understand why in the density data there is deviation in the exponent and early mantissa bits for the compressed representation.  Especially at zfp precision 24, the first 20 or so mantissa bits should be identical between IEEE and zfp; the sign and exponent bits certainly should agree, so the curves should overlap there.  I need to investigate that.  Note that the range of this field is very narrow: [1, 3].
+    As precision increases, the zfp curves deviate even more from IEEE, while you'd expect the opposite.
+    Round last ought to impact only the least significant bits compared to round first, but has an appreciable impact on the most significant bits.  Another total surprise.
+    The orthogonal transform ensures error distributions with equal amplitude, which helps.  The rounding modes themselves only shift the error distribution horizontally.
+    I need to look at a wider range of zfp precisions and other fields.  I quickly ran the real information computation on Gaussian white noise, and the information is (not surprisingly) zero across all bits.  zfp without rounding introduces some small blips in this case.
+
+It's possible that there's a bug in my implementation of real information, but the code is very straightforward and these results otherwise tend to agree with your findings.
+
+-Peter
+
+
+
+
+
+
+
+
+
+
+
+
+Allison,
+
+I think this is an interesting topic and would be happy for all of us to explore it further together.  I do have some concerns with the definition of real information, however.
+
+Consider the double-precision Miranda density field whose range is [0.999988, 3.00005].  Writing the (positive, normal) values in floating-point form x = 2^e (1 + f), the set of exponents are e in {-1, 0, 1}, which partition the range into three intervals: [0.5, 1), [1, 2), [2, 4).  The IEEE biased 11-bit binary representations of these exponents and their associated probabilities (for this data set) are
+
+-1 => 01111111110 (23.3%)
+0 => 01111111111 (30.1%)
+1 => 10000000000 (46.6%)
+
+In particular, lots of values are centered around the midpoint of the range, x = 2 = 2^1 (1 + 0).  Traversing x = 2 changes the exponent from e = 0 => 01111111111 to e = 1 => 10000000000, or vice versa.  This implies high entropy (we have roughly equal probability of an exponent bit being 0 or 1), and mutual information is also high, as except when two consecutive values are on opposite sides of x = 2, the exponent bits agree (you can predict one from the other).  This results in real information being near maximal for the exponent bits: around 0.95bits.
+
+Now consider what happens as we apply a simple linear transformation to the data, e.g., x' = 2 x.  All this does is increment the exponent by one.  The possible exponents are now
+
+0 => 01111111111 (23.3%)
+1 => 10000000000 (30.1%)
+2 => 10000000001 (46.6%)
+
+Now all of a sudden most exponent bits, except the last one, agree in about 77% of cases, so the real information for the most significant bits is greatly reduced.  It's even worse if we multiply by four:
+
+1 => 10000000000 (23.3%)
+2 => 10000000001 (30.1%)
+3 => 10000000010 (46.6%)
+
+This results in *zero* real information in the first 9 of 11 exponent bits.  So we went from 95% to 0% real information in these bits just by a "change of units."  Is that what we want?
+
+You can perform similar tricks by adding a small constant.  The attached plot shows the impact this has.  Consider the implications of this when measuring temperature in Kelvin, Celsius, and Fahrenheit.  Should that really change the intrinsic information content in the data?
+
+Another issue I have is that the "wrong" mantissa bits are paired when exponents differ, e.g., in signed velocity data that spans a wide exponent range.  This pairing is unique to the IEEE floating-point representation, which is a "compressed" way of representing 2098-bit numbers in the range [2^-1074, 2^1024).  Floating point is quite compact at representing such a wide range, but ought we not pair corresponding bits in the "raw" 2098-bit number representation rather than in compressed floating point?  Changing the floating-point precision or number format (e.g., to posits) significantly changes information content.
+
+I believe a lot of "real" information is actually false and occurs due to this incorrect pairing; bit #1 of a floating-point number in [1, 2) has the same place value as bit #0 of a floating-point number in [2, 4), but those two corresponding bits are not paired in the real information computation.  This incorrect pairing occurs whenever two numbers straddle 2 (or more generally when they have different exponents).
+
+I've implemented a "correct" measure of real information based on these ideas, but I've not had much chance to analyze it further.  In this case, the information is not computed for floating-point bit indices but is rather associated with exponents in {-1074, ..., 1023}.  I think it would be interesting to pursue this further.
+
+I also agree that it would be great to look at other compressors.  It's quite clear what fpzip would do to real information, as it zeros LSBs.  For other compressors, it would make sense to fix precision or set a relative error tolerance, at least when measuring real information in floating-point representation.
+
+-Peter

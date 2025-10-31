@@ -1,0 +1,25 @@
+name: real_info
+channels:
+  - conda-forge
+dependencies:
+  #  - python=*=*cp*
+  - python
+  - codecov
+  - dask
+  - jupyterlab
+  - matplotlib
+  - matplotlib-base
+  - netcdf4
+  - numpy
+  - opencv
+  - pandas
+  - pip
+  - pre-commit
+  - pytest
+  - pytest-cov
+  - pytest-xdist
+  - scikit-image
+  - scipy
+  - setuptools
+  - xarray
+  - statsmodels
