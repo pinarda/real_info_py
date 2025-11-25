@@ -1,0 +1,23 @@
+Are there artifacts RIC doesn’t catch – it’s global so local areas might have artifacts.
+
+Run ldcpy using same set of vars in last paper, show zfp gives better compression, retains less artifacts, and bitround.
+
+follow up
+Can we redefine it,
+(0.1) add these notes to research meeting notes in Dropbox.
+
+Compress the vars with BR
+↑
+What is ratio BR vs. zfp
+
+Are there artifacts?
+
+Make a DSSIM package
+put it on NCAR package site
+assume N-D array / xarray
+option for 3D
+put it on Hammerly github
+
+put in meeting notes on research Dropbox
+
+looking at compression ratio for all metrics vs just real info for both zfp and BR
